@@ -1,0 +1,34 @@
+{
+  "name": "@zsk282/sf-auditlog-parser",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start:dev": "nodemon src/main.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "jsforce": "^3.6.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15",
+    "prettier": "^2.6.1"
+  },
+  "version": "1.0.0",
+  "description": "Salesforce Audit Log Parser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zsk282/sf-auditlog-parser.git"
+  },
+  "keywords": [
+    "sf",
+    "auditlog",
+    "sfdx-cli",
+    "salesforce logs"
+  ],
+  "author": "Saurabh Kumar",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zsk282/sf-auditlog-parser/issues"
+  },
+  "homepage": "https://github.com/zsk282/sf-auditlog-parser#readme"
+}
