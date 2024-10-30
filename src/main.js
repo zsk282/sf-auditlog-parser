@@ -1,16 +1,16 @@
 import jsforce from 'jsforce';
 
-const actionsToParse = ['PermSetAssign', 'changedValidationActive'];
+const actionsToParse = [ 'changedValidationActive'];
 const metadataBasedRegex = {
     'PermSetAssign' : {
         metadataType: "PermissionSet",
-        memberName: /(?<=Permission set\s)[^:]+(?=:)/,
+        memberLabel: /(?<=Permission set\s)[^:]+(?=:)/,
         // memberApiName: "",
         userID: /(?<=UserID:\s\[)(.*?)(?=\])/
     },
     'changedValidationActive' : {
-        metadataType: "validationRules",
-        memberName: /(?<=flag for\s)(.*?)(?=\svalidation)/,
+        metadataType: "ValidationRule",
+        memberLabel: /(?<=flag for\s)(.*?)(?=\svalidation)/,
         // validationRuleAPIName: /UserID:\s*\[(.*?)\]/,
         // objectAPIName: /UserID:\s*\[(.*?)\]/,
         propertyName: /(?<=validation\s")[^"]+/,
@@ -20,21 +20,56 @@ const metadataBasedRegex = {
 };
 
 var sfOrgConnection;
+const sObjects = new Map();
+const permissionSet = new Map();
 
 async function authenticateOrg() {
     sfOrgConnection = new jsforce.Connection({
         instanceUrl: 'https://tefb2b--b2bct.sandbox.my.salesforce.com',
-        accessToken: '00D7Y000000BEMp!AQEAQBP.0L8awsxUdNMyS9C.qigmaqU_R5QeDkE_odQjn8FS1tTBJcHxz5MNAlsjpIHYDtxKmpxVGtZG.v90rmZ0deDFkZpi'
+        accessToken: '00D7Y000000BEMp!AQEAQG8bsy4OH7yV_kjYqiRkJHNNHLMMqKa1qJVDvFPtd1q1q3OIerANjyfGyEenmtOu7OocfbCqEVqofddNBwYA5iQNtFKd'
     });
-    // await sfOrgConnection.login('saurabh.kumar83@wipro.com.tefb2b.b2bct', 'NHOXkzNvMSqumBZ47cOLK7MqM');
 }
 
-async function querySf(query) {
+function singularize(word) {
+    if (word.endsWith("ses") || word.endsWith("xes") || word.endsWith("zes")) {
+      return word.slice(0, -3);
+    }
+    if (word.endsWith("shes") || word.endsWith("ches")) {
+      return word.slice(0, -4);
+    }
+  
+    if (word.endsWith("ies")) {
+      return word.slice(0, -3) + "y";
+    }
+  
+    return word.slice(0, -1);
+};
+
+async function querySf(sfOrgConnection, query) {
     const output = await sfOrgConnection.query(query);
+    const sObjectsRes = await sfOrgConnection.query('SELECT Label, QualifiedApiName FROM EntityDefinition limit 2000');
+    Object.entries(sObjectsRes.records).forEach(([key, value]) => {
+        sObjects.set(value.Label, {
+            // label: value.Label,
+            apiName: value.QualifiedApiName,
+        });
+    });
+
+    const permissionSetRes = await sfOrgConnection.query('SELECT Label, Name FROM PermissionSet limit 2000');
+    Object.entries(permissionSetRes.records).forEach(([key, value]) => {
+        permissionSet.set(value.Label, {
+            // label: value.Label,
+            apiName: value.Name
+        });
+    });
+    // const metadata = await sfOrgConnection.describeGlobal()
+    // const output1 = await sfOrgConnection.metadata.read('CustomObject', 'Quote')
+    // const metadata = await sfOrgConnection.tooling.describeGlobal()
+    // console.log(sObjects);
     return output;
 }
 
-async function eventMessageParser(eventName, eventMessage) {
+function eventMessageParser(eventName, eventMessage) {
     // console.log('>>>',eventName, '>>>>',eventMessage)
     const parsedObj = {};
     Object.entries(metadataBasedRegex[eventName]).forEach(([key, value]) => {
@@ -45,37 +80,52 @@ async function eventMessageParser(eventName, eventMessage) {
         }else{
             parsedObj[key] = value;
         }
+        parsedObj['eventMessage'] = eventMessage;
     });
-    console.log(parsedObj)
     return parsedObj;
 }
 
-async function formatting(data) {
-    var filtered = data.map(async record => {
-        if(actionsToParse.includes(record.Action)){
-            const parsedMessage = await eventMessageParser(record.Action, record.Display);
-            // console.log(parsedMessage)
-            // const user = await sfOrgConnection.sobject("User").retrieve("0059K000006duIE");
-            // console.log(user);
-            return {
-                eventId: record.Id,
-                eventName: record.Action,
-                eventMessage: record.Display,
-                eevntSection: record.Section,
-            };
+async function parseDataByRegex(data) {
+    var filtered = [];
+    Object.entries(data).forEach(([key, value]) => {
+        if(actionsToParse.includes(value.Action)){
+            filtered.push(eventMessageParser(value.Action, value.Display));
         }
     });
-    // console.log(filtered); 
+    /* var filtered = data.map(async record => {
+        if(actionsToParse.includes(record.Action)){
+            const parsedMessage = eventMessageParser(record.Action, record.Display);
+            return parsedMessage;
+        }
+    }); */
+    return filtered; 
 }
 
-async function main(username, password, query) {
-    await authenticateOrg(username, password);
-    const data = await querySf(query);
-    await formatting(data.records);
-}
+export default async function parseEvents(query) {
+    await authenticateOrg();
+    const data = await querySf(sfOrgConnection, query);
+    const res = await parseDataByRegex(data.records);
 
-main(
-    '',
-    '',
-    "SELECT Id, CreatedDate, CreatedBy.Username, Action,Display,Section FROM SetupAuditTrail WHERE Action IN ('changedValidationActive','PermSetAssign') ORDER BY CreatedDate Desc"
-);
+    var filtered = res.map(async record => {
+        switch (record.metadataType) {
+            case "PermissionSet":
+                const psVal = permissionSet.get(record.memberLabel);
+                return {
+                    ...record,
+                    ...psVal
+                }
+                // break;
+            case "ValidationRule":
+                const sobjVal = sObjects.get(singularize(record.memberLabel));
+                return {
+                    ...record,
+                    ...sobjVal
+                }
+                // break;
+            default:
+                break;
+        }
+    });
+
+    return filtered;
+}
