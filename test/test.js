@@ -1,10 +1,16 @@
 import parseEvents from '@zsk282/sf-auditlog-parser';
 
-async function main(query) {
-    const a = await parseEvents(query);
-    console.log('>>>',a);
+async function auditLogParser(loginUrl, username, passwordPlusToken, query) {
+    const parsedEventData  = await parseEvents(loginUrl, username, passwordPlusToken, query);
+    console.log(parsedEventData );
 }
 
-main(
-    "SELECT Id, CreatedDate, CreatedBy.Username, Action,Display,Section FROM SetupAuditTrail WHERE Action IN ('changedValidationActive','PermSetAssign') ORDER BY CreatedDate Desc"
+auditLogParser(
+    // for sandbox org use: https://test.salesforce.com
+    // for production org use: https://test.salesforce.com
+    "<salesforce Org URL>",
+    "<salesforce Org username>",
+    "<password+securitytoken>", //without "+" sign
+    // samplequery: SELECT Id, CreatedDate, CreatedBy.Username, Action,Display,Section FROM SetupAuditTrail WHERE Action IN ('changedValidationActive','PermSetAssign') ORDER BY CreatedDate Desc
+    "<query to get audit log>"
 )

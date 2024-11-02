@@ -1,18 +1,15 @@
 import jsforce from 'jsforce';
 
-const actionsToParse = [ 'PermissionSet', 'changedValidationActive'];
+const actionsToParse = [ 'PermSetAssign', 'changedValidationActive'];
 const metadataBasedRegex = {
     'PermSetAssign' : {
         metadataType: "PermissionSet",
         memberLabel: /(?<=Permission set\s)[^:]+(?=:)/,
-        // memberApiName: "",
         userID: /(?<=UserID:\s\[)(.*?)(?=\])/
     },
     'changedValidationActive' : {
         metadataType: "ValidationRule",
         memberLabel: /(?<=flag for\s)(.*?)(?=\svalidation)/,
-        // validationRuleAPIName: /UserID:\s*\[(.*?)\]/,
-        // objectAPIName: /UserID:\s*\[(.*?)\]/,
         propertyName: /(?<=validation\s")[^"]+/,
         oldValue: /(?<=from\s)\d+/,
         newValue: /(?<=to\s)\d+/,
@@ -22,12 +19,14 @@ const metadataBasedRegex = {
 var sfOrgConnection;
 const sObjects = new Map();
 const permissionSet = new Map();
+const usersData = new Map();
 
-async function authenticateOrg() {
+async function authenticateOrg(loginUrl, username, passwordPlusToken) {
     sfOrgConnection = new jsforce.Connection({
-        instanceUrl: 'https://tefb2b--b2bct.sandbox.my.salesforce.com',
-        accessToken: '00D7Y000000BEMp!AQEAQF_UNIB58JH4fsGKXAL73Xcn_p6MBy3TGuNtaV1pzV589W3qpLa0ek7kmN5_Chxm.549tQs19_qItCxb14qu1RN4KPVc'
+        loginUrl: loginUrl
     });
+    await sfOrgConnection.login(username, passwordPlusToken);
+    return;
 }
 
 function singularize(word) {
@@ -41,7 +40,6 @@ function singularize(word) {
     if (word.endsWith("ies")) {
       return word.slice(0, -3) + "y";
     }
-  
     return word.slice(0, -1);
 };
 
@@ -50,33 +48,33 @@ async function querySf(sfOrgConnection, query) {
     const sObjectsRes = await sfOrgConnection.query('SELECT Label, QualifiedApiName FROM EntityDefinition limit 2000');
     Object.entries(sObjectsRes.records).forEach(([key, value]) => {
         sObjects.set(value.Label, {
-            // label: value.Label,
-            apiName: value.QualifiedApiName,
+            objectApiName: value.QualifiedApiName,
         });
     });
 
     const permissionSetRes = await sfOrgConnection.query('SELECT Label, Name FROM PermissionSet limit 2000');
     Object.entries(permissionSetRes.records).forEach(([key, value]) => {
         permissionSet.set(value.Label, {
-            // label: value.Label,
             apiName: value.Name
         });
     });
-    // const metadata = await sfOrgConnection.describeGlobal()
-    // const output1 = await sfOrgConnection.metadata.read('CustomObject', 'Quote')
-    // const metadata = await sfOrgConnection.tooling.describeGlobal()
-    // console.log(sObjects);
+
+    const usersRes = await sfOrgConnection.query('SELECT Id, ProfileId FROM User');
+    Object.entries(usersRes.records).forEach(([key, value]) => {
+        const baseUserID = value.Id.substring(0, 15);
+        usersData.set(baseUserID, {
+            userId: value.Id,
+            profileId: value.ProfileId
+        });
+    });
     return output;
 }
 
 function eventMessageParser(eventName, eventMessage) {
-    // console.log('>>>',eventName, '>>>>',eventMessage)
     const parsedObj = {};
     Object.entries(metadataBasedRegex[eventName]).forEach(([key, value]) => {
         if(key != 'metadataType'){
-            // console.log('>>>',eventMessage, eventMessage.match(value))
             parsedObj[key] = eventMessage.match(value)[0];
-            // console.log('>>>',eventMessage,value.exec(eventMessage))
         }else{
             parsedObj[key] = value;
         }
@@ -92,40 +90,34 @@ async function parseDataByRegex(data) {
             filtered.push(eventMessageParser(value.Action, value.Display));
         }
     });
-    /* var filtered = data.map(async record => {
-        if(actionsToParse.includes(record.Action)){
-            const parsedMessage = eventMessageParser(record.Action, record.Display);
-            return parsedMessage;
-        }
-    }); */
     return filtered; 
 }
 
-export default async function parseEvents(query) {
-    await authenticateOrg();
+export default async function parseEvents(loginUrl, username, passwordPlusToken, query) {
+    await authenticateOrg(loginUrl, username, passwordPlusToken);
     const data = await querySf(sfOrgConnection, query);
     const res = await parseDataByRegex(data.records);
 
-    var filtered = res.map(async record => {
+    var filtered = res.map(record => {
         switch (record.metadataType) {
             case "PermissionSet":
                 const psVal = permissionSet.get(record.memberLabel);
+                const userVal = usersData.get(record.userID);
                 return {
                     ...record,
-                    ...psVal
+                    ...psVal,
+                    ...userVal
                 }
-                // break;
             case "ValidationRule":
                 const sobjVal = sObjects.get(singularize(record.memberLabel));
                 return {
+                    propertyAPIName: `${sobjVal.objectApiName}.${record.propertyName}`,
                     ...record,
                     ...sobjVal
                 }
-                // break;
             default:
                 break;
         }
     });
-
     return filtered;
 }
