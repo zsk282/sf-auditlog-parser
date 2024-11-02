@@ -1,5 +1,4 @@
 import parseEvents from '@zsk282/sf-auditlog-parser';
-import jsforce from 'jsforce';
 
 async function main(query) {
     const a = await parseEvents(query);
