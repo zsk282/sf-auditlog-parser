@@ -7,7 +7,7 @@ async function auditLogParser(loginUrl, username, passwordPlusToken, query) {
 
 auditLogParser(
     // for sandbox org use: https://test.salesforce.com
-    // for production org use: https://test.salesforce.com
+    // for production org use: https://login.salesforce.com
     "<salesforce Org URL>",
     "<salesforce Org username>",
     "<password+securitytoken>", //without "+" sign
