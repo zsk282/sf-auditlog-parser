@@ -1,6 +1,6 @@
 import jsforce from 'jsforce';
 
-const actionsToParse = [ 'changedValidationActive'];
+const actionsToParse = [ 'PermissionSet', 'changedValidationActive'];
 const metadataBasedRegex = {
     'PermSetAssign' : {
         metadataType: "PermissionSet",
@@ -26,7 +26,7 @@ const permissionSet = new Map();
 async function authenticateOrg() {
     sfOrgConnection = new jsforce.Connection({
         instanceUrl: 'https://tefb2b--b2bct.sandbox.my.salesforce.com',
-        accessToken: '00D7Y000000BEMp!AQEAQG8bsy4OH7yV_kjYqiRkJHNNHLMMqKa1qJVDvFPtd1q1q3OIerANjyfGyEenmtOu7OocfbCqEVqofddNBwYA5iQNtFKd'
+        accessToken: '00D7Y000000BEMp!AQEAQF_UNIB58JH4fsGKXAL73Xcn_p6MBy3TGuNtaV1pzV589W3qpLa0ek7kmN5_Chxm.549tQs19_qItCxb14qu1RN4KPVc'
     });
 }
 
